@@ -14,6 +14,7 @@
 
 
 from amaranth import *
+from amaranth.sim import Simulator
 
 def speck_round_fun(x, y, k, N, ALPHA, BETA):
 	new_x = (x.rotate_right(ALPHA) + y)[:N] ^ k
@@ -134,3 +135,126 @@ class Decrypt(Elaboratable):
 		m.d.comb += self.data_out.eq(Cat(y[T], x[T]))
 
 		return m
+
+# =====================================================================
+# VERIFICATION
+# =====================================================================
+# The following code, including the test vectors and simulation setup,
+# is strictly for testing and verifying the correctness of the crypto core.
+# It is not required for hardware synthesis or integration into larger designs.
+# =====================================================================
+
+SPECK_VARIANTS = [
+    {
+        "name": "Speck32/64",
+        "N": 16, "M": 4, "ALPHA": 7, "BETA": 2, "T": 22,
+        "key": 0x1918111009080100,
+        "pt":  0x6574694c,
+        "ct":  0xa86842f2
+    },
+    {
+        "name": "Speck48/72",
+        "N": 24, "M": 3, "ALPHA": 8, "BETA": 3, "T": 22,
+        "key": 0x1211100a0908020100,
+        "pt":  0x20796c6c6172,
+        "ct":  0xc049a5385adc
+    },
+    {
+        "name": "Speck48/96",
+        "N": 24, "M": 4, "ALPHA": 8, "BETA": 3, "T": 23,
+        "key": 0x1a19181211100a0908020100,
+        "pt":  0x6d2073696874,
+        "ct":  0x735e10b6445d
+    },
+    {
+        "name": "Speck64/96",
+        "N": 32, "M": 3, "ALPHA": 8, "BETA": 3, "T": 26,
+        "key": 0x131211100b0a090803020100,
+        "pt":  0x74614620736e6165,
+        "ct":  0x9f7952ec4175946c
+    },
+    {
+        "name": "Speck64/128",
+        "N": 32, "M": 4, "ALPHA": 8, "BETA": 3, "T": 27,
+        "key": 0x1b1a1918131211100b0a090803020100,
+        "pt":  0x3b7265747475432d,
+        "ct":  0x8c6fa548454e028b
+    },
+    {
+        "name": "Speck96/96",
+        "N": 48, "M": 2, "ALPHA": 8, "BETA": 3, "T": 28,
+        "key": 0x0d0c0b0a0908050403020100,
+        "pt":  0x65776f68202c656761737520,
+        "ct":  0x9e4d09ab717862bdde8f79aa
+    },
+    {
+        "name": "Speck96/144",
+        "N": 48, "M": 3, "ALPHA": 8, "BETA": 3, "T": 29,
+        "key": 0x1514131211100d0c0b0a0908050403020100,
+        "pt":  0x656d6974206e69202c726576,
+        "ct":  0x2bf31072228a7ae440252ee6
+    },
+    {
+        "name": "Speck128/128",
+        "N": 64, "M": 2, "ALPHA": 8, "BETA": 3, "T": 32,
+        "key": 0x0f0e0d0c0b0a09080706050403020100,
+        "pt":  0x6c617669757165207469206564616d20,
+        "ct":  0xa65d9851797832657860fedf5c570d18
+    },
+    {
+        "name": "Speck128/192",
+        "N": 64, "M": 3, "ALPHA": 8, "BETA": 3, "T": 33,
+        "key": 0x17161514131211100f0e0d0c0b0a09080706050403020100,
+        "pt":  0x726148206665696843206f7420746e65,
+        "ct":  0x1be4cf3a13135566f9bc185de03c1886
+    },
+    {
+        "name": "Speck128/256",
+        "N": 64, "M": 4, "ALPHA": 8, "BETA": 3, "T": 34,
+        "key": 0x1f1e1d1c1b1a191817161514131211100f0e0d0c0b0a09080706050403020100,
+        "pt":  0x65736f6874206e49202e72656e6f6f70,
+        "ct":  0x4109010405c0f53e4eeeb48d9c188f43
+    }
+]
+
+def verify_variant(variant):
+    """Dynamically creates a module for a variant and tests it."""
+    N, M = variant["N"], variant["M"]
+    A, B, T = variant["ALPHA"], variant["BETA"], variant["T"]
+
+    enc = Encrypt(N=N, M=M, ALPHA=A, BETA=B, T=T)
+    dec = Decrypt(N=N, M=M, ALPHA=A, BETA=B, T=T)
+
+    m = Module()
+    m.submodules.enc = enc
+    m.submodules.dec = dec
+
+    # Wire outputs directly to inputs to test the round-trip
+    m.d.comb += [
+        dec.key.eq(enc.key),
+        dec.data_in.eq(enc.data_out)
+    ]
+
+    async def testbench(ctx):
+        ctx.set(enc.data_in, variant["pt"])
+        ctx.set(enc.key, variant["key"])
+
+        actual_ct = ctx.get(enc.data_out)
+        actual_pt = ctx.get(dec.data_out)
+
+        assert actual_ct == variant["ct"], \
+            f"Encrypt failed for {variant['name']}: expected {hex(variant['ct'])}, got {hex(actual_ct)}"
+
+        assert actual_pt == variant["pt"], \
+            f"Decrypt failed for {variant['name']}: expected {hex(variant['pt'])}, got {hex(actual_pt)}"
+
+        print(f"Verified {variant['name']}")
+
+    sim = Simulator(m)
+    sim.add_testbench(testbench)
+    sim.run()
+
+if __name__ == "__main__":
+    for v in SPECK_VARIANTS:
+        verify_variant(v)
+    print("All variants verified successfully!")
