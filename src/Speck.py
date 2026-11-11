@@ -15,6 +15,7 @@
 
 from amaranth import *
 from amaranth.sim import Simulator
+from amaranth.back import verilog
 
 def speck_round_fun(x, y, k, N, ALPHA, BETA):
 	new_x = (x.rotate_right(ALPHA) + y)[:N] ^ k
@@ -254,7 +255,40 @@ def verify_variant(variant):
     sim.add_testbench(testbench)
     sim.run()
 
-if __name__ == "__main__":
-    for v in SPECK_VARIANTS:
-        verify_variant(v)
-    print("All variants verified successfully!")
+# if __name__ == "__main__":
+#     # Verification
+#     for v in SPECK_VARIANTS:
+#         verify_variant(v)
+#     print("All variants verified successfully!")
+#
+#     # generation of all variant (Encrypt + Decrypt)
+#     for variant in SPECK_VARIANTS:
+#         N = variant["N"]
+#         M = variant["M"]
+#         T = variant["T"]
+#         ALPHA = variant["ALPHA"]
+#         BETA = variant["BETA"]
+#
+#         # Calculate block size (x) and key size (y) for the filename
+#         block_size = 2 * N
+#         key_size = N * M
+#
+#         # Instantiate the Decrypt module
+#         enc = Encrypt(N=N, M=M, T=T, ALPHA=ALPHA, BETA=BETA)
+#         dec = Decrypt(N=N, M=M, T=T, ALPHA=ALPHA, BETA=BETA)
+#         ports = [dec.data_in, dec.key, dec.data_out]
+#
+#         # Generate the filename: e.g., simon32_64_dec.v
+#         filename1 = f"build/Speck/speck{block_size}_{key_size}_enc.v"
+#         filename2 = f"build/Speck/speck{block_size}_{key_size}_dec.v"
+#
+#         # Convert and write to file
+#         with open(filename1, "w") as f:
+#             f.write(verilog.convert(enc, ports=ports))
+#
+#         with open(filename2, "w") as f:
+#             f.write(verilog.convert(dec, ports=ports))
+#
+#         print(f"Generated {filename1}, {filename2} for {variant['name']}")
+#
+#     print("All 10 variant files emitted successfully!")
